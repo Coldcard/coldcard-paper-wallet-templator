@@ -4,10 +4,12 @@
 # Render PDF files needed for printing labels.
 #
 #
-import sys, os, csv, PIL, pdb
+import sys, os, csv, PIL, pdb, re
+import logging
 from io import BytesIO
-#from pdfrw.objects.pdfdict import PdfDict
 from PIL import Image
+from binascii import b2a_hex, a2b_hex
+from collections import Counter
 
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import inch, cm
@@ -29,10 +31,15 @@ from pdfrw.toreportlab import makerl
 
 # see  pp/reportlab/rl_settings.py
 rl_config.useA85 = 0
+rl_config.invariant = 1
 rl_config.pageCompression = 0
 
+# this specific text is matched on the Coldcard; cannot be changed.
+class placeholders:
+    addr = 'ADDRESS_XXXXXXXXXXXXXXXXXXXXXXXXXXXXX'                      # 37 long
+    privkey = 'PRIVKEY_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'     # 51 long
 
-import logging
+
 
 class TemplateBuilder(object):
     def __init__(self, input_template, output_fname=None, canvas=None):
@@ -125,11 +132,44 @@ class TemplateBuilder(object):
 
     
     def finalize(self):
+        c = self.canvas
+        c.setTitle("Paper Wallet template for Coldcard")
+        c.setAuthor("Templator")
+        #c.setProducer("Templator")
+        c.setCreator("Templator")
+        c.setProducer("Templator")
         self.canvas.save()
 
 
 class WalletBuilder(TemplateBuilder):
     def insert_values(self, page_num, *unused):
+        c = self.canvas
+
+        if 0:
+            c.saveState()
+            # change color: black
+            c.setFillColorRGB(0,0,0)
+            c.setStrokeColorRGB(0,0,0)
+
+            # 12pt font: 
+            c.setFont("Courier", 12)
+
+            # these are trival to find in output PDF once A85 encoding is disabled
+            c.drawString(1.25*inch, 3.5*inch, placeholders.addr)
+            c.drawString(6.25*inch, 3.5*inch, placeholders.privkey)
+
+            c.restoreState()
+
+        self.add_qr_spot('addr_qr', placeholders.addr, 1.5*inch, 4*inch)
+        self.add_qr_spot('privkey_qr', placeholders.privkey, 6.75*inch, 4*inch)
+        self.add_qr_spot('privkey_qr', placeholders.privkey, 6.75*inch, 1*inch, inch)
+
+
+    def add_qr_spot(self, name, subtext, x,y, page_size=2.25*inch, SZ=32*4):
+
+        # make a temp image to get started, data not critical except that
+        # must be unique because it gets hashed into eh xobj name
+
         c = self.canvas
         c.saveState()
 
@@ -137,65 +177,94 @@ class WalletBuilder(TemplateBuilder):
         c.setFillColorRGB(0,0,0)
         c.setStrokeColorRGB(0,0,0)
 
-        # 12pt font: 
-        c.setFont("Courier", 12)
 
-        # these are trival to find in output PDF once A85 encoding is disabled
-        c.drawString(1.25*inch, 3.5*inch, '1depositaddressexamplehere')
-        c.drawString(6.25*inch, 3.5*inch, '5privatekeywoudlbehereforexample')
-
-        c.restoreState()
-
-        self.add_qr_spot(1.5*inch, 4*inch, c, 'qr1')
-        self.add_qr_spot(6.75*inch, 4*inch, c, 'qr2')
-
-
-    def add_qr_spot(self, x,y, c, name, SZ=32*8):
         img = Image.new('L', (SZ,SZ))
-        img.putdata(name.encode('utf-8'))       # this gets hashed into the xobj name
+        img.putdata(name.encode('utf-8'))
 
         from reportlab.lib.utils import ImageReader
 
-        width = 2*inch
-        height = 2*inch
+        width = height = page_size
 
         # paste in the image
         c.drawImage(ImageReader(img, ident='qr1'), x, y,
                     width=width, height=height, preserveAspectRatio=True)
 
-        if 1:
-            # hack: find image just created, and convert to hex encoded, non-compressed form
-            # see: pp/reportlab/pdfgen/pdfimages.py
-            # and: reportlab/pdfgen/canvas.py drawImage()
-            # add: reportlab/pdfbase/pdfdoc.py PDFImageXObject()
-            line = c._code[-2] 
-            assert line.endswith(' Do')
-            handle = line[1:-3]
+        # Hack Zone: 
+        # - find image just created, and change it to hex encoded, non-compressed form
+        # - also put magic pattern into data
 
-            ximg = c._doc.idToObject.get(handle)
-            assert ximg
-            assert ximg.width == ximg.height == SZ
+        # see: pp/reportlab/pdfgen/pdfimages.py
+        # and: reportlab/pdfgen/canvas.py drawImage()
+        # add: reportlab/pdfbase/pdfdoc.py PDFImageXObject()
+        line = c._code[-2] 
+        assert line.endswith(' Do')
+        handle = line[1:-3]
 
-        if 1:
-            ximg._filters = ('ASCIIHexDecode',)      # kill the Flate (zlib)
+        ximg = c._doc.idToObject.get(handle)
+        assert ximg
+        assert ximg.width == ximg.height == SZ      # pixel sizes
 
-        if 0:
-            ximg.bitsPerComponent = 8
-            ximg.streamContent = '\n'.join(('%02X'%(i*2))*128 for i in range(128))
+        ximg._filters = ('ASCIIHexDecode',)      # kill the Flate (zlib)
+        ximg.bitsPerComponent = 1
 
-        if 1:
-            ximg.bitsPerComponent = 1
-            ximg.streamContent = '\n'.join(('%02X'%(0xff if (i>>2)%2 else 0x00))*(SZ//8)
-                                                            for i in range(SZ))
+        # stream itself, is just hex of raw pixels.
+        # - add whitespace as needed, so will split newline each raster line
+        # - first line reserved for magic data pattern, rest is dont-care
+        # - each byte is 8 pixels of monochrome data
+        # - left-to-right, top-to-bottom
+
+        fl = ('QR:%s' % name).ljust(SZ//8, ' ').encode('ascii')
+        assert len(fl) == (SZ//8)
+        fl = b2a_hex(fl).upper().decode('ascii')
+
+        ximg.streamContent = fl + '\n' + '\n'.join(('%02X'%(0xff if (i>>2)%2 else 0x00))*(SZ//8)
+                                                            for i in range(SZ-1)) + '\n'
 
         #pdb.set_trace()
 
+        if subtext:
+            # pick font size; doesn't try to suit size of QR, more like readable size
+            font_size = 8 if len(subtext) > 40 else 11
+            c.setFont("Courier", font_size)
+
+            # these strings are trival to find in output PDF once A85 encoding is disabled
+            c.drawCentredString(x+(page_size/2), y - 5 - font_size, subtext)
+
+        c.restoreState()
+
+def file_checker(fname):
+    raw = open(fname, 'rb').read()
+
+    assert placeholders.addr.encode('ascii') in raw, "payment addr missing"
+    assert placeholders.privkey.encode('ascii') in raw, 'privkey missing'
+
+    lines = raw.split(b'\n')
+
+    counts = Counter()
+    for n, ln in enumerate(lines):
+        if ln == b'stream':
+            try:
+                fl = a2b_hex(lines[n+1]).decode('ascii')
+            except:
+                continue
+
+
+            assert fl.startswith('QR:')
+            fl = fl[3:].strip()
+            counts[fl] += 1
+
+    assert len(counts) == 2, "missing QR instances"
+    assert all(i==1 for i in counts.values()), "too many images?"
+    pdb.set_trace()
+    
 
 if __name__ == '__main__':
 
     foo = WalletBuilder('placeholder.pdf', 'output.pdf')
     foo.make_custom()
     foo.finalize()
+
+    file_checker('output.pdf')
 
     os.system('open output.pdf')
 
