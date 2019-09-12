@@ -4,7 +4,7 @@
 # Render PDF files needed for printing labels.
 #
 #
-import sys, os, csv, PIL, pdb, re
+import sys, os, csv, PIL, pdb, re, click
 import logging
 from io import BytesIO
 from PIL import Image
@@ -13,10 +13,9 @@ from collections import Counter
 
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import inch, cm
-from reportlab.graphics.barcode.qr import QrCodeWidget
-from reportlab.graphics.barcode.code128 import Code128
-from reportlab.graphics import renderPDF
-from reportlab.graphics.shapes import Drawing 
+#from reportlab.graphics import renderPDF
+#from reportlab.graphics.shapes import Drawing 
+from reportlab.pdfbase import pdfdoc
 from reportlab.lib import colors
 from reportlab import rl_config
 
@@ -29,16 +28,31 @@ from pdfrw import PdfReader
 from pdfrw.buildxobj import pagexobj
 from pdfrw.toreportlab import makerl
 
-# see  pp/reportlab/rl_settings.py
+# These config values allow us to see text in a plain form in resulting PDF
+# - see pp/reportlab/rl_settings.py
 rl_config.useA85 = 0
 rl_config.invariant = 1
 rl_config.pageCompression = 0
 
-# this specific text is matched on the Coldcard; cannot be changed.
+# These very-specific text values are matched on the Coldcard; cannot be changed.
 class placeholders:
     addr = 'ADDRESS_XXXXXXXXXXXXXXXXXXXXXXXXXXXXX'                      # 37 long
     privkey = 'PRIVKEY_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'     # 51 long
 
+    # rather than Tokyo, I chose Chiba Prefecture in ShiftJIS encoding...
+    header = b'%PDF-1.3\n%\x90\xe7\x97t\x8c\xa7 Coldcard Paper Wallet Template\n'
+
+
+# Control the first few bytes of the file ... still valid PDF file tho.
+# - had to monkey-patch in this change
+# - see pp/reportlab/pdfbase/pdfdoc.py PDFFile() class
+class myPDFFile(pdfdoc.PDFFile):
+    def __init__(self,unused):
+        self.strings = []
+        self.write = self.strings.append
+        self.offset = 0
+        self.add(placeholders.header)
+pdfdoc.PDFFile = myPDFFile
 
 
 class TemplateBuilder(object):
@@ -46,6 +60,8 @@ class TemplateBuilder(object):
 
         pages = PdfReader(input_template).pages
         self.xobjs = [(pagexobj(x),) for x in pages]
+
+        assert len(pages) == 1, "only supporting a single page"
 
         if output_fname:
             # probably an object, not filename, but whatevers
@@ -89,7 +105,7 @@ class TemplateBuilder(object):
 
     def make_image_page(self, img, label=None, width=4*inch, height=6*inch, footnote=None):
         '''
-            Whole page is one image.
+            Whole page is one raster image. XXX untested
         '''
         c = self.canvas
 
@@ -103,12 +119,6 @@ class TemplateBuilder(object):
         # paste in the image
         c.drawImage(ImageReader(img, ident=str(label)), X_SHIFT,Y_SHIFT,
                     width=width, height=height, preserveAspectRatio=True)
-
-        if footnote:
-            # Add some tiny text in corning or something. Used for
-            # internall additions to the label.
-            #self.simple_text(footnote, x=width/2, y=(0.05*inch))
-            self.simple_text(footnote, x=width-(0.05*inch), y=(0.10*inch))
 
         c.showPage()
 
@@ -135,7 +145,6 @@ class TemplateBuilder(object):
         c = self.canvas
         c.setTitle("Paper Wallet template for Coldcard")
         c.setAuthor("Templator")
-        #c.setProducer("Templator")
         c.setCreator("Templator")
         c.setProducer("Templator")
         self.canvas.save()
@@ -160,9 +169,9 @@ class WalletBuilder(TemplateBuilder):
 
             c.restoreState()
 
-        self.add_qr_spot('addr_qr', placeholders.addr, 1.5*inch, 4*inch)
-        self.add_qr_spot('privkey_qr', placeholders.privkey, 6.75*inch, 4*inch)
-        self.add_qr_spot('privkey_qr', placeholders.privkey, 6.75*inch, 1*inch, inch)
+        self.add_qr_spot('ad', placeholders.addr, 1.5*inch, 4*inch)
+        self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 4*inch)
+        self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 1*inch, inch)
 
 
     def add_qr_spot(self, name, subtext, x,y, page_size=2.25*inch, SZ=32*4):
@@ -191,11 +200,10 @@ class WalletBuilder(TemplateBuilder):
 
         # Hack Zone: 
         # - find image just created, and change it to hex encoded, non-compressed form
-        # - also put magic pattern into data
-
-        # see: pp/reportlab/pdfgen/pdfimages.py
-        # and: reportlab/pdfgen/canvas.py drawImage()
-        # add: reportlab/pdfbase/pdfdoc.py PDFImageXObject()
+        # - also put magic pattern into data, which the Coldcard can find
+        # - see: pp/reportlab/pdfgen/pdfimages.py
+        # - and: reportlab/pdfgen/canvas.py drawImage()
+        # - add: reportlab/pdfbase/pdfdoc.py PDFImageXObject()
         line = c._code[-2] 
         assert line.endswith(' Do')
         handle = line[1:-3]
@@ -207,7 +215,7 @@ class WalletBuilder(TemplateBuilder):
         ximg._filters = ('ASCIIHexDecode',)      # kill the Flate (zlib)
         ximg.bitsPerComponent = 1
 
-        # stream itself, is just hex of raw pixels.
+        # Stream itself, is just hex of raw pixels.
         # - add whitespace as needed, so will split newline each raster line
         # - first line reserved for magic data pattern, rest is dont-care
         # - each byte is 8 pixels of monochrome data
@@ -219,8 +227,6 @@ class WalletBuilder(TemplateBuilder):
 
         ximg.streamContent = fl + '\n' + '\n'.join(('%02X'%(0xff if (i>>2)%2 else 0x00))*(SZ//8)
                                                             for i in range(SZ-1)) + '\n'
-
-        #pdb.set_trace()
 
         if subtext:
             # pick font size; doesn't try to suit size of QR, more like readable size
@@ -235,8 +241,9 @@ class WalletBuilder(TemplateBuilder):
 def file_checker(fname):
     raw = open(fname, 'rb').read()
 
-    assert placeholders.addr.encode('ascii') in raw, "payment addr missing"
-    assert placeholders.privkey.encode('ascii') in raw, 'privkey missing'
+    assert raw.startswith(placeholders.header), 'header wrong/missing'
+    assert placeholders.addr.encode('ascii') in raw, "payment addr (text) missing"
+    assert placeholders.privkey.encode('ascii') in raw, 'privkey (text) missing'
 
     lines = raw.split(b'\n')
 
@@ -255,7 +262,8 @@ def file_checker(fname):
 
     assert len(counts) == 2, "missing QR instances"
     assert all(i==1 for i in counts.values()), "too many images?"
-    pdb.set_trace()
+
+    print("File checks out ok!")
     
 
 if __name__ == '__main__':
