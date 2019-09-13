@@ -1,6 +1,6 @@
 # Templator for Coldcard Paper Wallets
 
-- an artist creates the PDF with background artwork
+- an artist creates the PDF with background artwork, blank spots for QR's
 - locations for pubkey, privkey QR's and text blocks are defined mm by mm
 - run this program to add placeholders objects for the 2 QR codes, related variable text
 - a template file, which looks and acts like a PDF is constructed
@@ -22,3 +22,9 @@
 - Command to go from PNG with alpha and some text into simple PNM file:
 
     `pngtopam -mix -background=#FFF qrsample-pk.png | pamditherbw -threshold | pamtopnm > qrsample-pk.pnm
+
+# Design Tips
+
+- you must include whitespace around the QR code: more the better, and should be fully 'quiet'
+- QR will be background white / black pixels ... so do not place over gradient
+

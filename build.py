@@ -169,10 +169,14 @@ class WalletBuilder(TemplateBuilder):
 
             c.restoreState()
 
-        self.add_qr_spot('addr', placeholders.addr, 1.5*inch, 4*inch)
-        self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 4*inch)
+        self.add_qr_spot('addr', placeholders.addr, 1.5*inch, 3.75*inch)
+        self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 3.75*inch)
         self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 1*inch, inch)
 
+        for i in range(3):
+            self.add_qr_spot('addr', None, (0.75*inch) + (1.5*i*inch), 1.25*inch, inch)
+
+        c.drawString(1.00*inch, 1.0*inch, placeholders.addr)
 
     def add_qr_spot(self, name, subtext, x,y, page_size=2.25*inch, SZ=33*8):
 
