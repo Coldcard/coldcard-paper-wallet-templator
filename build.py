@@ -169,12 +169,12 @@ class WalletBuilder(TemplateBuilder):
 
             c.restoreState()
 
-        self.add_qr_spot('ad', placeholders.addr, 1.5*inch, 4*inch)
+        self.add_qr_spot('addr', placeholders.addr, 1.5*inch, 4*inch)
         self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 4*inch)
         self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 1*inch, inch)
 
 
-    def add_qr_spot(self, name, subtext, x,y, page_size=2.25*inch, SZ=32*4):
+    def add_qr_spot(self, name, subtext, x,y, page_size=2.25*inch, SZ=33*8):
 
         # make a temp image to get started, data not critical except that
         # must be unique because it gets hashed into eh xobj name
@@ -221,12 +221,23 @@ class WalletBuilder(TemplateBuilder):
         # - each byte is 8 pixels of monochrome data
         # - left-to-right, top-to-bottom
 
-        fl = ('QR:%s' % name).ljust(SZ//8, ' ').encode('ascii')
+        fl = ('QR:%s' % name).encode('ascii').ljust(SZ//8, b'\xff')
         assert len(fl) == (SZ//8)
-        fl = b2a_hex(fl).upper().decode('ascii')
 
-        ximg.streamContent = fl + '\n' + '\n'.join(('%02X'%(0xff if (i>>2)%2 else 0x00))*(SZ//8)
-                                                            for i in range(SZ-1)) + '\n'
+        # make a placeholder image for sizing/preview purposes. Not a real QR.
+        lines = []
+
+        img = Image.open(f'qrsample-{name}.pnm')
+        assert img.size == (SZ, SZ), 'need another sample'
+        sample = img.tobytes()
+        for o in range(0, len(sample), SZ//8):
+            lines.append(sample[o:o+(SZ//8)])
+
+        lines[0] = fl
+        #ximg.streamContent = fl + '\n' + '\n'.join(('%02X'%(0xff if (i>>2)%2 else 0x00))*(SZ//8)
+        #                                                    for i in range(SZ-1)) + '\n'
+        ximg.streamContent = '\n'.join(ln.hex().upper() for ln in lines)
+        ximg.streamContent += '\n'
 
         if subtext:
             # pick font size; doesn't try to suit size of QR, more like readable size
@@ -247,22 +258,26 @@ def file_checker(fname):
 
     lines = raw.split(b'\n')
 
+    max_len = max(len(ln) for ln in lines)
+    print(f"Max line length in file: {max_len}")
+    assert max_len < 2048, "some lines are too long"
+
     counts = Counter()
     for n, ln in enumerate(lines):
         if ln == b'stream':
             try:
-                fl = a2b_hex(lines[n+1]).decode('ascii')
+                fl = a2b_hex(lines[n+1])
+                assert fl.startswith(b'QR:')
             except:
                 continue
 
-
-            assert fl.startswith('QR:')
-            fl = fl[3:].strip()
+            fl = fl.rstrip(b'\xff').decode('ascii')[3:]
             counts[fl] += 1
 
     assert len(counts) == 2, "missing QR instances"
     assert all(i==1 for i in counts.values()), "too many images?"
 
+    print("Includes QR's: " + ', '.join(counts))
     print("File checks out ok!")
     
 

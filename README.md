@@ -13,3 +13,12 @@
 - [PDF 1.7?](https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/PDF32000_2008.pdf)
 
 - [ReportLab manual](https://www.reportlab.com/docs/reportlab-userguide.pdf)
+
+# QR Sample images
+
+- Made a zero-border verion 4 image here: <https://www.nayuki.io/page/qr-code-generator-library>
+- With 8 pixels per module, like we will be doing.
+- Edited with Preview.app
+- Command to go from PNG with alpha and some text into simple PNM file:
+
+    `pngtopam -mix -background=#FFF qrsample-pk.png | pamditherbw -threshold | pamtopnm > qrsample-pk.pnm
