@@ -76,7 +76,7 @@ class TemplateBuilder(object):
     def insert_values(self, page_num, *values):
         raise NotImplemented
 
-    def make_custom(self, *values):
+    def make_custom(self, template_name):
         c = self.canvas
 
         for page_num, xobjlist in enumerate(self.xobjs):
@@ -97,7 +97,7 @@ class TemplateBuilder(object):
                 c.restoreState()
 
                 # put our data on "top"
-                self.insert_values(page_num, *values)
+                self.insert_values(page_num, template_name)
 
                 x += xobj.BBox[2]
 
@@ -151,7 +151,27 @@ class TemplateBuilder(object):
 
 
 class WalletBuilder(TemplateBuilder):
-    def insert_values(self, page_num, *unused):
+    def insert_values(self, page_num, template_name):
+
+        if template_name == 'placeholder':
+            self.add_qr_spot('addr', placeholders.addr, 1.5*inch, 3.75*inch)
+            self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 3.75*inch)
+            self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 1*inch, inch)
+
+            for i in range(3):
+                self.add_qr_spot('addr', None, (0.75*inch) + (1.5*i*inch), 1.25*inch, inch)
+
+            self.address_at(1.00*inch, 1.0*inch)
+
+        elif template_name == 'coldcard-paper':
+            x = 1.5*inch
+            self.addr_qr(x, 7.5*inch, 2*inch)
+            self.privkey_qr(x, 1.1*inch, 2*inch)
+
+        else:
+            print(f"\n\nDefine code for: {template_name}\n\n")
+
+    def XXX_insert_values(self, page_num, *unused):
         c = self.canvas
 
         if 0:
@@ -169,14 +189,34 @@ class WalletBuilder(TemplateBuilder):
 
             c.restoreState()
 
-        self.add_qr_spot('addr', placeholders.addr, 1.5*inch, 3.75*inch)
-        self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 3.75*inch)
-        self.add_qr_spot('pk', placeholders.privkey, 6.75*inch, 1*inch, inch)
 
-        for i in range(3):
-            self.add_qr_spot('addr', None, (0.75*inch) + (1.5*i*inch), 1.25*inch, inch)
+    def addr_qr(self, x,y, size=1*inch, no_text=False):
+        self.add_qr_spot('addr', placeholders.addr if not no_text else None, x,y, page_size=size)
 
-        c.drawString(1.00*inch, 1.0*inch, placeholders.addr)
+    def privkey_qr(self, x,y, size=1*inch, no_text=False):
+        self.add_qr_spot('pk', placeholders.privkey if not no_text else None, x,y, page_size=size)
+        
+
+    def address_at(self, x,y, **kws):
+        self.add_text(placeholders.addr, x, y, **kws)
+
+    def privkey_at(self, x,y, **kws):
+        self.add_text(placeholders.privkey, x, y, **kws)
+
+    def add_text(self, msg, x,y, font_size=12, font_name='Courier'):
+        c = self.canvas
+        c.saveState()
+
+        # change color: black
+        c.setFillColorRGB(0,0,0)
+        c.setStrokeColorRGB(0,0,0)
+
+        # size and font name.
+        c.setFont(font_name, font_size)
+
+        c.drawString(x, y, msg)
+
+        c.restoreState()
 
     def add_qr_spot(self, name, subtext, x,y, page_size=2.25*inch, SZ=33*8):
 
@@ -238,8 +278,6 @@ class WalletBuilder(TemplateBuilder):
             lines.append(sample[o:o+(SZ//8)])
 
         lines[0] = fl
-        #ximg.streamContent = fl + '\n' + '\n'.join(('%02X'%(0xff if (i>>2)%2 else 0x00))*(SZ//8)
-        #                                                    for i in range(SZ-1)) + '\n'
         ximg.streamContent = '\n'.join(ln.hex().upper() for ln in lines)
         ximg.streamContent += '\n'
 
@@ -287,12 +325,15 @@ def file_checker(fname):
 
 if __name__ == '__main__':
 
-    foo = WalletBuilder('placeholder.pdf', 'output.pdf')
-    foo.make_custom()
-    foo.finalize()
+    for fn in [ 'coldcard-paper', 'placeholder']:
 
-    file_checker('output.pdf')
+        outfile = f'outputs/{fn}.pdf'
 
-    os.system('open output.pdf')
+        foo = WalletBuilder(f'templates/{fn}.pdf', outfile)
+        foo.make_custom(fn)
+        foo.finalize()
+
+        file_checker(outfile)
+        os.system(f'open {outfile}')
 
 # EOF
