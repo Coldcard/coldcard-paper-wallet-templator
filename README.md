@@ -1,7 +1,8 @@
 # Templator for Coldcard Paper Wallets
 
-Just looking for some cool paper wallet templates? Go to [templates subdir](templates) 
-and take any of the PDF files for use on Coldcard.
+Just looking for some cool paper wallet templates? Go to [output subdir](output) 
+and take any of the PDF files for use on Coldcard. You can view them with normal
+PDF programs, but they have been specially prepared for editing by the Coldcard.
 
 # How It Works
 
