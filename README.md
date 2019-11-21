@@ -1,8 +1,8 @@
 # Templator for Coldcard Paper Wallets
 
 - an artist creates the PDF with background artwork, blank spots for QR's
-- locations for pubkey, privkey QR's and text blocks are defined mm by mm
-- run this program to add placeholders objects for the 2 QR codes, related variable text
+- locations for pubkey, privkey QR's and any text blocks are defined mm by mm, in `build.py`
+- run `build.py` to add placeholders objects for the 2 QR codes, related variable text
 - a template file--which looks and acts like a PDF---is constructed, in `./templates`
 - use the resulting (pdf) file on Coldcard via a MicroSD card
 - the Coldcard can find what it needs inside the PDF template and will modify it with final values
@@ -10,14 +10,14 @@
 # Design Tips
 
 - you must include whitespace around the QR code: more the better, and should be fully 'quiet'
-- QR will have background white / black pixels ... so do not place over gradient
+- QR will have background white with black pixels ... so do not place over gradient
 
 # TODO
 
 This project isn't done yet!
-- make it easier to add new templates
-- build a gallery of useful examples
-- make many seasonal templates, starting with American Thanksgiving and Christmas.
+- [ ] make it easier to add new templates; pull meta data out of build into files
+- [ ] build a gallery of useful examples
+- [ ] make many seasonal templates, starting with Nov/Dec days
 
 # References
 
