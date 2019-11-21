@@ -1,5 +1,10 @@
 # Templator for Coldcard Paper Wallets
 
+Just looking for some cool paper wallet templates? Go to [templates subdir](templates) 
+and take any of the PDF files for use on Coldcard.
+
+# How It Works
+
 - an artist creates the PDF with background artwork, blank spots for QR's
 - locations for pubkey, privkey QR's and any text blocks are defined mm by mm, in `build.py`
 - run `build.py` to add placeholders objects for the 2 QR codes, related variable text
@@ -7,7 +12,7 @@
 - use the resulting (pdf) file on Coldcard via a MicroSD card
 - the Coldcard can find what it needs inside the PDF template and will modify it with final values
 
-# Design Tips
+## Design Tips
 
 - you must include whitespace around the QR code: more the better, and should be fully 'quiet'
 - QR will have background white with black pixels ... so do not place over gradient
