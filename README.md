@@ -9,7 +9,7 @@ PDF programs, but they have been specially prepared for editing by the Coldcard.
 - an artist creates the PDF with background artwork, blank spots for QR's
 - locations for pubkey, privkey QR's and any text blocks are defined mm by mm, in `build.py`
 - run `build.py` to add placeholders objects for the 2 QR codes, related variable text
-- a template file--which looks and acts like a PDF---is constructed, in `./templates`
+- a template file--which looks and acts like a PDF---is constructed, in `./outputs`
 - use the resulting (pdf) file on Coldcard via a MicroSD card
 - the Coldcard can find what it needs inside the PDF template and will modify it with final values
 
@@ -21,9 +21,9 @@ PDF programs, but they have been specially prepared for editing by the Coldcard.
 # TODO
 
 This project isn't done yet!
-- [ ] make it easier to add new templates; pull meta data out of build into files
+- [ ] make it easier to add new templates; pull meta data out of `build.py` into other files
 - [ ] build a gallery of useful examples
-- [ ] make many seasonal templates, starting with Nov/Dec days
+- [ ] make many seasonal templates, starting with Nov/Dec holidays
 
 # References
 
